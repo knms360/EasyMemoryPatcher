@@ -1,0 +1,195 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using Memory;
+
+namespace MemoryPatcher
+{
+    internal class Program
+    {
+        public static bool attached = false;
+        public static int errorcode = 1;
+        public static Mem mem = new Mem();
+        static int Main(string[] args)
+        {
+            // コマンドライン引数がない場合の処理
+            if (args.Length == 0)
+            {
+                Console.WriteLine("No arguments! /h for help.");
+                Thread.Sleep(5000);
+                return 1;
+            }
+            if (args[0] == "/h") 
+            {
+                Console.WriteLine(@"HELP
+MemoryPatcher WriteMemory 0x21C14E3E byte 0xFF /pid 14052
+MemoryPatcher.exe ReadBytes 0x21C14E3E 5 /pid 14052
+C:\MemoryPatcher.exe ReadBits 0x21C14E3E /pname pcsx2.exe
+MemoryPatcher WriteBits 0x21C14E3E 01111110 /pname pcsx2
+MemoryPatcher AoBScan ""F9 11 39 44 B3 ?? 8F 3F C3 11"" /pname pcsx2.exe");
+                return 0;
+            }
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i] == "/pid")
+                {
+                    if (!mem.OpenProcess(Convert.ToInt32(args[i + 1])))
+                    {
+                        Console.WriteLine("Process Not Found");
+                        return 1;
+                    }
+                    attached = true;
+                }
+                else if (args[i] == "/pname")
+                {
+                    if (!mem.OpenProcess(args[i + 1]))
+                    {
+                        Console.WriteLine("Process Not Found");
+                        return 1;
+                    }
+                    attached = true;
+                }
+            }
+            if (!attached)
+            {
+                Console.WriteLine("/pname or /pid not found!");
+                return 1;
+            }
+            switch (args[0])
+            {
+                case "ReadBytes":
+                    Console.WriteLine(string.Join(" ", mem.ReadBytes(args[1], Convert.ToInt32(args[2])).Select(b => b.ToString("X2"))));
+                    errorcode = 0;
+                    break;
+                case "ReadFloat":
+                    Console.WriteLine(mem.ReadFloat(args[1]));
+                    errorcode = 0;
+                    break;
+                case "ReadDouble":
+                    Console.WriteLine(mem.ReadDouble(args[1]));
+                    errorcode = 0;
+                    break;
+                case "ReadInt":
+                    Console.WriteLine(mem.ReadInt(args[1]));
+                    errorcode = 0;
+                    break;
+                case "ReadLong":
+                    Console.WriteLine(mem.ReadLong(args[1]));
+                    errorcode = 0;
+                    break;
+                case "ReadUInt":
+                    Console.WriteLine(mem.ReadUInt(args[1]));
+                    errorcode = 0;
+                    break;
+                case "Read2ByteMove":
+                    Console.WriteLine(mem.Read2ByteMove(args[1], Convert.ToInt32(args[2])));
+                    errorcode = 0;
+                    break;
+                case "ReadIntMove":
+                    Console.WriteLine(mem.ReadIntMove(args[1], Convert.ToInt32(args[2])));
+                    errorcode = 0;
+                    break;
+                case "ReadUIntMove":
+                    Console.WriteLine(mem.ReadUIntMove(args[1], Convert.ToInt32(args[2])));
+                    errorcode = 0;
+                    break;
+                case "Read2Byte":
+                    Console.WriteLine(mem.Read2Byte(args[1]));
+                    errorcode = 0;
+                    break;
+                case "ReadByte":
+                    Console.WriteLine(mem.ReadByte(args[1]));
+                    errorcode = 0;
+                    break;
+                case "ReadBits":
+                    Console.WriteLine(string.Concat(mem.ReadBits(args[1]).Select(b => b ? '1' : '0')));
+                    errorcode = 0;
+                    break;
+                case "WriteMemory":
+                    if (mem.WriteMemory(args[1], args[2], args[3]))
+                        errorcode = 0;
+                    break;
+                case "WriteMove":
+                    if(mem.WriteMove(args[1], args[2], args[3], Convert.ToInt32(args[4])))
+                        errorcode = 0;
+                    break;
+                case "WriteBytes":
+                    string input = args[2];
+                    var result = new List<byte>();
+                    for (int i = 0; i < input.Length; i += 2)
+                    {
+                        string hex;
+                        if (i + 2 <= input.Length)
+                            hex = input.Substring(i, 2);
+                        else
+                            hex = input.Substring(i, 1);
+
+                        result.Add(Convert.ToByte(hex, 16));
+                    }
+                    mem.WriteBytes(args[1], result.ToArray());
+                    errorcode = 0;
+                    break;
+                case "WriteBits":
+                    if (args[2].Length == 8)
+                    {
+                        mem.WriteBits(args[1], args[2].Select(c => c == '1').ToArray());
+                        errorcode = 0;
+                    }
+                    else
+                    {
+                        Console.WriteLine("The argument to \"WriteBits\" must be an 8-digit binary number.");
+                        errorcode = 1;
+                    }
+                    break;
+                case "AoBScan":
+                    Task.Run(async () =>
+                    {
+                        var results = await mem.AoBScan(args[1], true, true);
+                        if (!results.Any())
+                        {
+                            Console.WriteLine("AoB Scan not found.");
+                            errorcode = -1;
+                        }
+                        else
+                        {
+                            foreach (var res in results)
+                            {
+                                Console.WriteLine("0x" + res.ToString("X"));
+                            }
+                            errorcode = 0;
+                        }
+                    }).Wait();
+                    break;
+                case "AoBRangeScan":
+                    Task.Run(async () =>
+                    {
+                        var results = mem.AoBScan(Convert.ToInt64(args[1], 16), Convert.ToInt64(args[2], 16), args[3], true, true, true).Result;
+                        Console.WriteLine(Convert.ToInt64(args[2], 16));
+                        if (!results.Any())
+                        {
+                            Console.WriteLine("AoB Scan not found.");
+                            errorcode = -1;
+                        }
+                        else
+                        {
+                            foreach (var res in results)
+                            {
+                                Console.WriteLine("0x" + res.ToString("X"));
+                            }
+                            errorcode = 0;
+                        }
+                    }).Wait();
+                    break;
+                default:
+                    Console.WriteLine($"The function {args[0]} was not recognized.");
+                    errorcode = 1;
+                    break;
+            }
+            return errorcode;
+        }
+    }
+}
