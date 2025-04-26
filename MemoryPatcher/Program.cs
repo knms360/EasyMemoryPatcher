@@ -2,9 +2,11 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using Memory;
 
 namespace MemoryPatcher
@@ -14,6 +16,22 @@ namespace MemoryPatcher
         public static bool attached = false;
         public static int errorcode = 1;
         public static Mem mem = new Mem();
+
+        [DllImport("kernel32.dll", SetLastError = true, CallingConvention = CallingConvention.Winapi)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool IsWow64Process(IntPtr hProcess, out bool wow64Process);
+
+        static bool Is64BitProcess(Process process)
+        {
+            if (!Environment.Is64BitOperatingSystem)
+                return false; // OS自体が32bitならプロセスも32bit
+
+            bool isWow64;
+            if (!IsWow64Process(process.Handle, out isWow64))
+                throw new System.ComponentModel.Win32Exception();
+
+            return !isWow64; // Wow64なら32bit、そうでなければ64bit
+        }
         static int Main(string[] args)
         {
             // コマンドライン引数がない場合の処理
@@ -30,28 +48,134 @@ MemoryPatcher WriteMemory 0x21C14E3E byte 0xFF /pid 14052
 MemoryPatcher.exe ReadBytes 0x21C14E3E 5 /pid 14052
 C:\MemoryPatcher.exe ReadBits 0x21C14E3E /pname pcsx2.exe
 MemoryPatcher WriteBits 0x21C14E3E 01111110 /pname pcsx2
-MemoryPatcher AoBScan ""F9 11 39 44 B3 ?? 8F 3F C3 11"" /pname pcsx2.exe");
+MemoryPatcher AoBScan ""F9 11 39 44 B3 ?? 8F 3F C3 11"" /pname pcsx2.exe
+MemoryPatcher CheckProcess /pname pcsx2.exe");
                 return 0;
             }
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "/pid")
                 {
-                    if (!mem.OpenProcess(Convert.ToInt32(args[i + 1])))
+                    if (args[0] == "CheckProcess")
                     {
-                        Console.WriteLine("Process Not Found");
-                        return 1;
+                        if (Is64BitProcess(Process.GetProcessById(Convert.ToInt32(args[i + 1]))))
+                        {
+                            Console.WriteLine("64bit");
+                        }
+                        else
+                        {
+                            Console.WriteLine("32bit");
+                        }
+                        return 0;
                     }
-                    attached = true;
+                    if (Environment.Is64BitProcess)
+                    {
+                        if (Is64BitProcess(Process.GetProcessById(Convert.ToInt32(args[i + 1]))))
+                        {
+                            if (!mem.OpenProcess(Convert.ToInt32(args[i + 1])))
+                            {
+                                Console.WriteLine("Process Not Found");
+                                return 1;
+                            }
+                            attached = true;
+                        }
+                        else
+                        {
+                            Console.WriteLine("64bit process cannot access 32bit process.");
+                            return -1;
+                        }
+                    }
+                    else
+                    {
+                        if (Is64BitProcess(Process.GetProcessById(Convert.ToInt32(args[i + 1]))))
+                        {
+                            Console.WriteLine("32bit process cannot access 64bit process.");
+                            return -1;
+                        }
+                        else
+                        {
+                            if (!mem.OpenProcess(Convert.ToInt32(args[i + 1])))
+                            {
+                                Console.WriteLine("Process Not Found");
+                                return 1;
+                            }
+                            attached = true;
+                        }
+                    }
                 }
                 else if (args[i] == "/pname")
                 {
-                    if (!mem.OpenProcess(args[i + 1]))
+                    string name = "";
+                    if (args[i + 1].ToLower().Contains(".exe"))
+                    {
+                        name = args[i + 1].ToLower().Replace(".exe", "");
+                    }
+                    if (args[i + 1].ToLower().Contains(".bin"))
+                    {
+                        name = args[i + 1].ToLower().Replace(".bin", "");
+                    }
+                    if (Process.GetProcessesByName(name).Length != 0)
+                    {
+                        if (args[0] == "CheckProcess")
+                        {
+                            if (Is64BitProcess(Process.GetProcessesByName(name)[0]))
+                            {
+                                Console.WriteLine("64bit");
+                            }
+                            else
+                            {
+                                Console.WriteLine("32bit");
+                            }
+                            return 0;
+                        }
+                        if (Environment.Is64BitProcess)
+                        {
+                            if (Is64BitProcess(Process.GetProcessesByName(name)[0]))
+                            {
+                                if (!mem.OpenProcess(name))
+                                {
+                                    Console.WriteLine("Process Not Found");
+                                    return 1;
+                                }
+                                attached = true;
+                            }
+                            else
+                            {
+                                if (!mem.OpenProcess(name))
+                                {
+                                    Console.WriteLine("64bit process cannot access 32bit process.");
+                                    return 1;
+                                }
+                                else
+                                {
+                                    Console.WriteLine("Warning: 64bit process is accessing 32bit process.");
+                                }
+                                attached = true;
+                            }
+                        }
+                        else
+                        {
+                            if (Is64BitProcess(Process.GetProcessesByName(name)[0]))
+                            {
+                                Console.WriteLine("32bit process cannot access 64bit process.");
+                                return 1;
+                            }
+                            else
+                            {
+                                if (!mem.OpenProcess(name))
+                                {
+                                    Console.WriteLine("Process Not Found");
+                                    return 1;
+                                }
+                                attached = true;
+                            }
+                        }
+                    }
+                    else
                     {
                         Console.WriteLine("Process Not Found");
                         return 1;
                     }
-                    attached = true;
                 }
             }
             if (!attached)
@@ -167,8 +291,8 @@ MemoryPatcher AoBScan ""F9 11 39 44 B3 ?? 8F 3F C3 11"" /pname pcsx2.exe");
                 case "AoBRangeScan":
                     Task.Run(async () =>
                     {
-                        var results = mem.AoBScan(Convert.ToInt64(args[1], 16), Convert.ToInt64(args[2], 16), args[3], true, true, true).Result;
-                        Console.WriteLine(Convert.ToInt64(args[2], 16));
+                        var results = await mem.AoBScan(Convert.ToInt64(args[1], 16), Convert.ToInt64(args[2], 16), args[3], true, true, true);
+                        Console.WriteLine("This command may not run successfully. Experimental and advanced");
                         if (!results.Any())
                         {
                             Console.WriteLine("AoB Scan not found.");
