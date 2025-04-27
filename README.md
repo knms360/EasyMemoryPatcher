@@ -18,5 +18,5 @@ You can also see simple usage by using /h.
      MemoryPatcher.exe ReadBytes 0x21C14E3E 5 /pid 14052
      C:\MemoryPatcher.exe ReadBits 0x21C14E3E /pname pcsx2.exe
      MemoryPatcher WriteBits 0x21C14E3E 01111110 /pname pcsx2
-     MemoryPatcher AoBScan ""F9 11 39 44 B3 ?? 8F 3F C3 11"" /pname pcsx2.exe
+     MemoryPatcher AoBScan "F9 11 39 44 B3 ?? 8F 3F C3 11" /pname pcsx2.exe
      MemoryPatcher CheckProcess /pname pcsx2.exe
