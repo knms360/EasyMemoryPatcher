@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -32,26 +34,92 @@ namespace MemoryPatcher
 
             return !isWow64; // Wow64なら32bit、そうでなければ64bit
         }
+
+        static bool IsRunAsAdministrator()
+        {
+            using (var identity = WindowsIdentity.GetCurrent())
+            {
+                var principal = new WindowsPrincipal(identity);
+                return principal.IsInRole(WindowsBuiltInRole.Administrator);
+            }
+        }
         static int Main(string[] args)
         {
+            bool isAdminMode = args.Contains("/admin-mode");
+            bool Admin = args.Contains("/Admin");
+            StreamWriter writer = null;
+            const string outputFile = "admin_output.txt"; // 出力ファイル名
             // コマンドライン引数がない場合の処理
             if (args.Length == 0)
             {
                 Console.WriteLine("No arguments! /h for help.");
-                Thread.Sleep(5000);
+                Thread.Sleep(4000);
                 return 1;
             }
             if (args[0] == "/h") 
             {
-                Console.WriteLine(@"HELP
+                Console.WriteLine(@"EasyMemoryPatcher 1.7
+This is a console application that allows you to control memory from common executable programs such as the command prompt or bat files.
+How to Use
 MemoryPatcher WriteMemory 0x21C14E3E byte 0xFF /pid 14052
 MemoryPatcher.exe ReadBytes 0x21C14E3E 5 /pid 14052
 C:\MemoryPatcher.exe ReadBits 0x21C14E3E /pname pcsx2.exe
 MemoryPatcher WriteBits 0x21C14E3E 01111110 /pname pcsx2
 MemoryPatcher AoBScan ""F9 11 39 44 B3 ?? 8F 3F C3 11"" /pname pcsx2.exe
-MemoryPatcher CheckProcess /pname pcsx2.exe");
+MemoryPatcher CheckProcess /pname pcsx2.exe
+
+");
                 return 0;
             }
+
+            if (Admin)
+            {
+                if (!IsRunAsAdministrator())
+                {
+                    // 管理者権限じゃない → 自分をrunasで起動
+                    string arguments = string.Join(" ", args.Select(arg => $"\"{arg}\""));
+
+                    try
+                    {
+                        var processInfo = new ProcessStartInfo
+                        {
+                            FileName = Process.GetCurrentProcess().MainModule.FileName,
+                            Arguments = arguments.Replace("/Admin", "") + " /admin-mode",
+                            UseShellExecute = true,
+                            Verb = "runas"
+                        };
+
+                        var process = Process.Start(processInfo);
+                        process.WaitForExit(); // 昇格したプロセスが終わるのを待つ
+
+                        // 出力ファイルを読む
+                        if (File.Exists(outputFile))
+                        {
+                            string output = File.ReadAllText(outputFile);
+                            Console.WriteLine(output);
+                            File.Delete(outputFile); // 読み終わったら削除（お好みで）
+                        }
+
+                        return process.ExitCode;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine("Elevation failed: " + ex.Message);
+                        return -1;
+                    }
+                }
+            }
+            if (isAdminMode)
+            {
+                writer = new StreamWriter(outputFile, append: false, encoding: Encoding.UTF8)
+                {
+                    AutoFlush = true
+                };
+
+                Console.SetOut(writer);
+                Console.SetError(writer);
+            }
+
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "/pid")
@@ -74,7 +142,7 @@ MemoryPatcher CheckProcess /pname pcsx2.exe");
                         {
                             if (!mem.OpenProcess(Convert.ToInt32(args[i + 1])))
                             {
-                                Console.WriteLine("Process Not Found");
+                                Console.WriteLine("Attach Failed");
                                 return 1;
                             }
                             attached = true;
@@ -134,7 +202,7 @@ MemoryPatcher CheckProcess /pname pcsx2.exe");
                             {
                                 if (!mem.OpenProcess(name))
                                 {
-                                    Console.WriteLine("Process Not Found");
+                                    Console.WriteLine("Attach Failed");
                                     return 1;
                                 }
                                 attached = true;
@@ -272,7 +340,7 @@ MemoryPatcher CheckProcess /pname pcsx2.exe");
                 case "AoBScan":
                     Task.Run(async () =>
                     {
-                        var results = await mem.AoBScan(args[1], true, true);
+                        var results = await mem.AoBScan(args[1], true, true, true);
                         if (!results.Any())
                         {
                             Console.WriteLine("AoB Scan not found.");
@@ -312,6 +380,10 @@ MemoryPatcher CheckProcess /pname pcsx2.exe");
                     Console.WriteLine($"The function {args[0]} was not recognized.");
                     errorcode = 1;
                     break;
+            }
+            if (isAdminMode)
+            {
+                writer.Close();
             }
             return errorcode;
         }
