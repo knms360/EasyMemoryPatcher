@@ -20,3 +20,4 @@ You can also see simple usage by using /h.
      MemoryPatcher WriteBits 0x21C14E3E 01111110 /pname pcsx2
      MemoryPatcher AoBScan "F9 11 39 44 B3 ?? 8F 3F C3 11" /pname pcsx2.exe
      MemoryPatcher CheckProcess /pname pcsx2.exe
+     MemoryPatcher.exe ReadBytes 0x21C14E3E 5 /pname pcsx2.exe /log

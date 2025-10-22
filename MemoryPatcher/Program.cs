@@ -17,6 +17,8 @@ namespace MemoryPatcher
     {
         public static bool attached = false;
         public static int errorcode = 1;
+        public static string error = "";
+        public static string output = "";
         public static Mem mem = new Mem();
 
         [DllImport("kernel32.dll", SetLastError = true, CallingConvention = CallingConvention.Winapi)]
@@ -43,7 +45,46 @@ namespace MemoryPatcher
                 return principal.IsInRole(WindowsBuiltInRole.Administrator);
             }
         }
+
         static int Main(string[] args)
+        {
+            int returns = -1;
+            if (args.Contains("/log"))
+            {
+                try
+                {
+                    returns = Main2(args);
+                    if (output != "")
+                    {
+                        StreamWriter writer = new StreamWriter(@"output.txt", false, Encoding.UTF8);
+                        writer.Write(output);
+                        writer.Close();
+                    }
+                    if (error != "")
+                    {
+                        StreamWriter writer = new StreamWriter(@"error.txt", false, Encoding.UTF8);
+                        writer.Write(error);
+                        writer.Close();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    returns = ex.HResult;
+                    StreamWriter writer = new StreamWriter(@"error.txt", false, Encoding.UTF8);
+                    writer.Write(ex);
+                    writer.Close();
+                }
+            }
+            else
+            {
+                returns = Main2(args);
+                Console.WriteLine(output);
+                Console.WriteLine(error);
+            }
+            return returns;
+        }
+
+        static int Main2(string[] args)
         {
             bool isAdminMode = args.Contains("/admin-mode");
             bool Admin = args.Contains("/Admin");
@@ -52,13 +93,13 @@ namespace MemoryPatcher
             // コマンドライン引数がない場合の処理
             if (args.Length == 0)
             {
-                Console.WriteLine("No arguments! /h for help.");
+                error = "No arguments! /h for help.";
                 Thread.Sleep(4000);
                 return 1;
             }
             if (args[0] == "/h") 
             {
-                Console.WriteLine(@"EasyMemoryPatcher 1.7
+                output = @"EasyMemoryPatcher 2.0
 This is a console application that allows you to control memory from common executable programs such as the command prompt or bat files.
 How to Use
 MemoryPatcher WriteMemory 0x21C14E3E byte 0xFF /pid 14052
@@ -67,8 +108,8 @@ C:\MemoryPatcher.exe ReadBits 0x21C14E3E /pname pcsx2.exe
 MemoryPatcher WriteBits 0x21C14E3E 01111110 /pname pcsx2
 MemoryPatcher AoBScan ""F9 11 39 44 B3 ?? 8F 3F C3 11"" /pname pcsx2.exe
 MemoryPatcher CheckProcess /pname pcsx2.exe
-
-");
+MemoryPatcher.exe ReadBytes 0x21C14E3E 5 /pname pcsx2.exe /log
+";
                 return 0;
             }
 
@@ -96,7 +137,7 @@ MemoryPatcher CheckProcess /pname pcsx2.exe
                         if (File.Exists(outputFile))
                         {
                             string output = File.ReadAllText(outputFile);
-                            Console.WriteLine(output);
+                            Program.output = output;
                             File.Delete(outputFile); // 読み終わったら削除（お好みで）
                         }
 
@@ -104,7 +145,7 @@ MemoryPatcher CheckProcess /pname pcsx2.exe
                     }
                     catch (Exception ex)
                     {
-                        Console.Error.WriteLine("Elevation failed: " + ex.Message);
+                        error = "Elevation failed: " + ex.Message;
                         return -1;
                     }
                 }
@@ -128,11 +169,11 @@ MemoryPatcher CheckProcess /pname pcsx2.exe
                     {
                         if (Is64BitProcess(Process.GetProcessById(Convert.ToInt32(args[i + 1]))))
                         {
-                            Console.WriteLine("64bit");
+                            error = "64bit";
                         }
                         else
                         {
-                            Console.WriteLine("32bit");
+                            output = "32bit";
                         }
                         return 0;
                     }
@@ -142,14 +183,14 @@ MemoryPatcher CheckProcess /pname pcsx2.exe
                         {
                             if (!mem.OpenProcess(Convert.ToInt32(args[i + 1])))
                             {
-                                Console.WriteLine("Attach Failed");
+                                error = "Attach Failed";
                                 return 1;
                             }
                             attached = true;
                         }
                         else
                         {
-                            Console.WriteLine("64bit process cannot access 32bit process.");
+                            error = "64bit process cannot access 32bit process.";
                             return -1;
                         }
                     }
@@ -157,14 +198,14 @@ MemoryPatcher CheckProcess /pname pcsx2.exe
                     {
                         if (Is64BitProcess(Process.GetProcessById(Convert.ToInt32(args[i + 1]))))
                         {
-                            Console.WriteLine("32bit process cannot access 64bit process.");
+                            error = "32bit process cannot access 64bit process.";
                             return -1;
                         }
                         else
                         {
                             if (!mem.OpenProcess(Convert.ToInt32(args[i + 1])))
                             {
-                                Console.WriteLine("Process Not Found");
+                                error = "Process Not Found";
                                 return 1;
                             }
                             attached = true;
@@ -173,14 +214,14 @@ MemoryPatcher CheckProcess /pname pcsx2.exe
                 }
                 else if (args[i] == "/pname")
                 {
-                    string name = "";
-                    if (args[i + 1].ToLower().Contains(".exe"))
+                    string name = args[i + 1];
+                    if (name.ToLower().Contains(".exe"))
                     {
-                        name = args[i + 1].ToLower().Replace(".exe", "");
+                        name = name.ToLower().Replace(".exe", "");
                     }
-                    if (args[i + 1].ToLower().Contains(".bin"))
+                    if (name.ToLower().Contains(".bin"))
                     {
-                        name = args[i + 1].ToLower().Replace(".bin", "");
+                        name = name.ToLower().Replace(".bin", "");
                     }
                     if (Process.GetProcessesByName(name).Length != 0)
                     {
@@ -188,11 +229,11 @@ MemoryPatcher CheckProcess /pname pcsx2.exe
                         {
                             if (Is64BitProcess(Process.GetProcessesByName(name)[0]))
                             {
-                                Console.WriteLine("64bit");
+                                output = "64bit";
                             }
                             else
                             {
-                                Console.WriteLine("32bit");
+                                output = "32bit";
                             }
                             return 0;
                         }
@@ -202,7 +243,7 @@ MemoryPatcher CheckProcess /pname pcsx2.exe
                             {
                                 if (!mem.OpenProcess(name))
                                 {
-                                    Console.WriteLine("Attach Failed");
+                                    error = "Attach Failed";
                                     return 1;
                                 }
                                 attached = true;
@@ -211,12 +252,12 @@ MemoryPatcher CheckProcess /pname pcsx2.exe
                             {
                                 if (!mem.OpenProcess(name))
                                 {
-                                    Console.WriteLine("64bit process cannot access 32bit process.");
+                                    error = "64bit process cannot access 32bit process.";
                                     return 1;
                                 }
                                 else
                                 {
-                                    Console.WriteLine("Warning: 64bit process is accessing 32bit process.");
+                                    error = "Warning: 64bit process is accessing 32bit process.";
                                 }
                                 attached = true;
                             }
@@ -225,14 +266,14 @@ MemoryPatcher CheckProcess /pname pcsx2.exe
                         {
                             if (Is64BitProcess(Process.GetProcessesByName(name)[0]))
                             {
-                                Console.WriteLine("32bit process cannot access 64bit process.");
+                                error = "32bit process cannot access 64bit process.";
                                 return 1;
                             }
                             else
                             {
                                 if (!mem.OpenProcess(name))
                                 {
-                                    Console.WriteLine("Process Not Found");
+                                    error = "Process Not Found";
                                     return 1;
                                 }
                                 attached = true;
@@ -241,64 +282,64 @@ MemoryPatcher CheckProcess /pname pcsx2.exe
                     }
                     else
                     {
-                        Console.WriteLine("Process Not Found");
+                        error = "Process Not Found";
                         return 1;
                     }
                 }
             }
             if (!attached)
             {
-                Console.WriteLine("/pname or /pid not found!");
+                error = "/pname or /pid not found!";
                 return 1;
             }
             switch (args[0])
             {
                 case "ReadBytes":
-                    Console.WriteLine(string.Join(" ", mem.ReadBytes(args[1], Convert.ToInt32(args[2])).Select(b => b.ToString("X2"))));
+                    output = string.Join(" ", mem.ReadBytes(args[1], Convert.ToInt32(args[2])).Select(b => b.ToString("X2")));
                     errorcode = 0;
                     break;
                 case "ReadFloat":
-                    Console.WriteLine(mem.ReadFloat(args[1]));
+                    output = mem.ReadFloat(args[1]).ToString();
                     errorcode = 0;
                     break;
                 case "ReadDouble":
-                    Console.WriteLine(mem.ReadDouble(args[1]));
+                    output = mem.ReadDouble(args[1]).ToString();
                     errorcode = 0;
                     break;
                 case "ReadInt":
-                    Console.WriteLine(mem.ReadInt(args[1]));
+                    output = mem.ReadInt(args[1]).ToString();
                     errorcode = 0;
                     break;
                 case "ReadLong":
-                    Console.WriteLine(mem.ReadLong(args[1]));
+                    output = mem.ReadLong(args[1]).ToString();
                     errorcode = 0;
                     break;
                 case "ReadUInt":
-                    Console.WriteLine(mem.ReadUInt(args[1]));
+                    output = mem.ReadUInt(args[1]).ToString();
                     errorcode = 0;
                     break;
                 case "Read2ByteMove":
-                    Console.WriteLine(mem.Read2ByteMove(args[1], Convert.ToInt32(args[2])));
+                    output = mem.Read2ByteMove(args[1], Convert.ToInt32(args[2])).ToString();
                     errorcode = 0;
                     break;
                 case "ReadIntMove":
-                    Console.WriteLine(mem.ReadIntMove(args[1], Convert.ToInt32(args[2])));
+                    output = mem.ReadIntMove(args[1], Convert.ToInt32(args[2])).ToString();
                     errorcode = 0;
                     break;
                 case "ReadUIntMove":
-                    Console.WriteLine(mem.ReadUIntMove(args[1], Convert.ToInt32(args[2])));
+                    output = mem.ReadUIntMove(args[1], Convert.ToInt32(args[2])).ToString();
                     errorcode = 0;
                     break;
                 case "Read2Byte":
-                    Console.WriteLine(mem.Read2Byte(args[1]));
+                    output = mem.Read2Byte(args[1]).ToString();
                     errorcode = 0;
                     break;
                 case "ReadByte":
-                    Console.WriteLine(mem.ReadByte(args[1]));
+                    output = mem.ReadByte(args[1]).ToString();
                     errorcode = 0;
                     break;
                 case "ReadBits":
-                    Console.WriteLine(string.Concat(mem.ReadBits(args[1]).Select(b => b ? '1' : '0')));
+                    output = string.Concat(mem.ReadBits(args[1]).Select(b => b ? '1' : '0'));
                     errorcode = 0;
                     break;
                 case "WriteMemory":
@@ -333,7 +374,7 @@ MemoryPatcher CheckProcess /pname pcsx2.exe
                     }
                     else
                     {
-                        Console.WriteLine("The argument to \"WriteBits\" must be an 8-digit binary number.");
+                        error = "The argument to \"WriteBits\" must be an 8-digit binary number.";
                         errorcode = 1;
                     }
                     break;
@@ -343,15 +384,17 @@ MemoryPatcher CheckProcess /pname pcsx2.exe
                         var results = await mem.AoBScan(args[1], true, true, true);
                         if (!results.Any())
                         {
-                            Console.WriteLine("AoB Scan not found.");
+                            error = "AoB Scan not found.";
                             errorcode = -1;
                         }
                         else
                         {
+                            string temp = "";
                             foreach (var res in results)
                             {
-                                Console.WriteLine("0x" + res.ToString("X"));
+                                temp += "0x" + res.ToString("X");
                             }
+                            output = temp;
                             errorcode = 0;
                         }
                     }).Wait();
@@ -360,24 +403,26 @@ MemoryPatcher CheckProcess /pname pcsx2.exe
                     Task.Run(async () =>
                     {
                         var results = await mem.AoBScan(Convert.ToInt64(args[1], 16), Convert.ToInt64(args[2], 16), args[3], true, true, true);
-                        Console.WriteLine("This command may not run successfully. Experimental and advanced");
+                        error = "This command may not run successfully. Experimental and advanced";
                         if (!results.Any())
                         {
-                            Console.WriteLine("AoB Scan not found.");
+                            error = "AoB Scan not found.";
                             errorcode = -1;
                         }
                         else
                         {
+                            string temp = "";
                             foreach (var res in results)
                             {
-                                Console.WriteLine("0x" + res.ToString("X"));
+                                temp += "0x" + res.ToString("X");
                             }
+                            output = temp;
                             errorcode = 0;
                         }
                     }).Wait();
                     break;
                 default:
-                    Console.WriteLine($"The function {args[0]} was not recognized.");
+                    error = $"The function {args[0]} was not recognized.";
                     errorcode = 1;
                     break;
             }
