@@ -1,5 +1,5 @@
 # EasyMemoryPatcher
-## This program is a console application port of Memory.dll.This program is a console application port of [Memory.dll](https://github.com/erfg12/memory.dll). Thank you for erfg12.
+## This program is a console application port of [Memory.dll](https://github.com/erfg12/memory.dll). Thank you for erfg12.
 
 This is a console application that allows you to control memory from common executable programs such as the command prompt or bat files.
 
